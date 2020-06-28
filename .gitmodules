@@ -1,0 +1,3 @@
+[submodule "wz"]
+	path = wz
+	url = https://github.com/hoangthaiduong/wz.git
