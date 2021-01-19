@@ -1,3 +1,6 @@
 [submodule "wz"]
 	path = wz
 	url = https://github.com/hoangthaiduong/wz.git
+[submodule "idx2/idx2"]
+	path = idx2/idx2
+	url = https://github.com/hoangthaiduong/idx2.git

@@ -370,12 +370,14 @@ def get_data(train_or_test, shuffle = None, image_size = None, scale_size = None
    mem_log = 'train_log/'+args.model_name+'/memory_log.txt'
    if not os.path.exists(mem_log):
       os.mkdir(mem_log)
-   if not isTrain and not isVal:
+   if isTrain or isVal:
+      print("    >>>> Using lymphoma 2 dataflow with tensorfpack")
       ds = datapack.lymphoma2(train_or_test, image_size=image_size, scale_size=scale_size
                               , scale=scale, multi_crop=multi_crop, crop_per_case=crop_per_case
                               , normalize=normalize, shuffle=shuffle, dir=dir
                               , unknown_dir=unknown_dir, original_dir=original_dir, idx=None)
    else:
+      print( "   >>>> Using IDX conversions for training, allows for resolution dependence ")
       ds = datapack.lymphoma2ZIDX(train_or_test, image_size=image_size, scale_size=scale_size
                               , scale=scale, multi_crop=multi_crop, crop_per_case=crop_per_case
                               , normalize=normalize, shuffle=shuffle, dir=dir
@@ -638,7 +640,7 @@ if __name__ == '__main__':
    parser.add_argument('--unknown_dir',type= str, default='../data/Unknowns/predictions/',help="unknown samples to classify")
    parser.add_argument('--save_sample',type= bool, default=False,help="boolean save originals")
    parser.add_argument('--original_dir',default=False,help="directory to save originals")
-   parser.add_argument('--data_dir', default=None, help="directory to read data from")
+   parser.add_argument('--data_dir', default=os.getcwd()+'/data', help="directory to read data from")
    parser.add_argument('--num_gpu',type= int,help="Number GPU to use if not specificaly assigned")
    parser.add_argument('--scale_lr',type= float,default=1.0,help="Scale learning rate factor (for distributed training)")
    parser.add_argument('--gpu_frac',type= float,default=0.96,help="Number GPU to use if not specificaly assigned")
@@ -793,7 +795,7 @@ if __name__ == '__main__':
                if not os.path.exists( path ):
                   os.makedirs( path )
                
-               path = path+'/res95'+args.unknown_dir+'.txt'
+               path = path+'/res80'+args.unknown_dir+'.txt'
                if os.path.exists(path):
                   append_write = 'a'
                   #write results to file                   

@@ -6,25 +6,19 @@
 #SBATCH -e slurm-%j.err-%N # name of the stderr, using the job number (%j) and the first node (%N)
 #SBATCH --gres=gpu:5
 
-import argparse
 import os
+import argparse
 from six.moves import range
-
 #from scipy.misc import imsave
 import pickle as pickle
-#import tensorflow as tf
-#import tensorflow as tf #.compat.v1 as tf
-#tf.disable_v2_behavior()
+import random as rnd
 from tensorpack import *
-from tensorpack.tfutils.symbolic_functions import *
-from tensorpack.tfutils.summary import *
 from tensorpack.utils.utils import get_rng
 from tensorpack.dataflow.base import RNGDataFlow
 import numpy as np
 from PIL import Image
-import cv2
 import copy
-#from memory_profiler import profile
+from memory_profiler import profile
 
 from LyCNN.datapack.IO import VisusDataflow
 from LyCNN.datapack.medical_aug import normalize_staining, hematoxylin_eosin_aug
@@ -182,13 +176,11 @@ def read_lymphoma(filenames,  train_or_test = 'train', image_size = 448, scale_s
     return (ret, class_0, class_1, unique_samples)
 
 # read data and write to idx file with z space
-# filling order for controlable resolution
-"""memory_log = "no_name.log"
-memory_profile_log=open(memory_log,'w+')
-@profile(stream=memory_profile_log)"""
+# filling order for controllable resolution
+@profile
 def read_write_idx_lymphoma(filenames, train_or_test='train', image_size=448, scale_size=224, scale=2, multi_crop=0
                             ,crop_per_case=None, normalize=None, original_dir=None
-                            , write_crop=True, idx_filepath='', mode=None, resolution=None):
+                            , write_crop=True, idx_filepath='', mode=None ):
     num_show = 5
     ret = []
     class_0 = 0
@@ -197,7 +189,6 @@ def read_write_idx_lymphoma(filenames, train_or_test='train', image_size=448, sc
     unique_samples = 0
     idx_samples = []
     idx_labels = []
-    data=[]
     for fname in filenames:
         if mode == 'w':
             with open(fname, 'rb') as fo:
@@ -211,7 +202,7 @@ def read_write_idx_lymphoma(filenames, train_or_test='train', image_size=448, sc
             fo.close()
 
         if mode == 'r':
-            idx_sample = VisusDataflow.ReadData(data=fname, load=True, resolution=resolution)
+            idx_sample = VisusDataflow.ReadData(data=fname, load=True)
             idx_samples.append(idx_sample.data)
             idx_labels.append(int(str(1) in fname.split('~')[-1]))
             #continue collecting from folder
@@ -304,25 +295,15 @@ def read_write_idx_lymphoma(filenames, train_or_test='train', image_size=448, sc
                 for tile in range(multi_crop_):
                     if multi_crop_ != 1:
                         total_crops += 1
-                    full_w = img_og.shape[0]
-                    full_h = img_og.shape[1]
-                    if multi_crop_ > 4:
-                        continue
-                    start_w = [full_w//10, full_w//5, full_w//3, full_w//2][tile] if multi_crop_ <= 4 else [100, 200, 300, 400, 500, 600][tile]
-                    start_h = [full_h//10, full_h//5, full_h//3, full_h//2][tile] if multi_crop_ <= 4 else [400, 400, 400, 400, 400, 400][tile]
+                    start_w = [100, 300, 500, 700][tile] if multi_crop_ <= 4 else [100, 200, 300, 400, 500, 600][tile]
+                    start_h = [400, 400, 400, 400][tile] if multi_crop_ <= 4 else [400, 400, 400, 400, 400, 400][tile]
 
                     copy_func = copy.deepcopy if multi_crop_ != 1 else lambda x: x
                     img_crop = copy.deepcopy(img_og)
 
                     if image_size is not None:
-                        if (start_w + 2 * image_size < full_w) and (start_h + 2 * image_size < full_h):
-                            img_crop = img_crop[start_w:(start_w + 2 * image_size), start_h:(start_h + 2 * image_size), :]
-                        else:
-                            img_crop = img_crop[0:image_size, 0:image_size, :]
+                        img_crop = img_crop[start_w:(start_w + 2 * image_size), start_h:(start_h + 2 * image_size), :]
 
-                    if image_size is not None and (img_crop.shape[0] < image_size or img_crop.shape[1] < image_size):
-                        print(" >>>>>>>>>>>>>>>> WARNING: excluding sample, too small")
-                        continue
                     # write crop in IDX file format in
                     # Z space filling order for parameter based
                     # resolutuion on read
@@ -336,15 +317,13 @@ def read_write_idx_lymphoma(filenames, train_or_test='train', image_size=448, sc
                         #im_crop = np.transpose(img_og, [1, 2, 0])
                     # img_stack = np.expand_dims( img_crop, axis=0)
                     if image_size is not None:
-
-                        if img_crop.shape[0] != image_size:
-                            img_crop = Image.fromarray(img_crop, 'RGB')
-                            # img_crop.show()
-                            # import sys
-                            # sys.exit(0)
-                            img_crop = img_crop.resize((image_size, image_size), Image.ANTIALIAS)
-                            img_crop = np.array(img_crop)
-                            img_crop = img_crop.reshape((image_size, image_size, 3))  # .transpose(0,3,1,2)
+                        img_crop = Image.fromarray(img_crop, 'RGB')
+                        #img_crop.show()
+                        #import sys
+                        #sys.exit(0)
+                        img_crop = img_crop.resize((image_size, image_size), Image.ANTIALIAS)
+                        img_crop = np.array(img_crop)
+                        img_crop = img_crop.reshape((image_size, image_size, 3))  # .transpose(0,3,1,2)
 
                     # to place as nd array for tensorflow and augmentors
                     if label[k] == 0:
@@ -382,10 +361,7 @@ def get_filenames(dir, train_or_test = '', unknown_dir = None, idx = False):
         print(">>>>>>>>>> Using ", str(file_count), " batched files.")
 
     if train_or_test == 'train':
-        print(">>>>>>>>>>>>>>>>  ", os.path.join(dir, 'train'))
-        print("using idx? ", idx)
-        print("cwd: ", os.getcwd())
-        
+        print(">>>>>>>>>>>>>>>>  ", os.path.join(dir, 'train','train_idx'))
         path, dirs, files_train = next(os.walk(os.path.join(dir, 'train'))) if not idx else next(os.walk(os.path.join(dir, 'train','train_idx')))
         file_count = len(files_train)
         filenames = [os.path.join(dir, 'train', batch) for batch in files_train] if not idx else [os.path.join(dir, 'train', 'train_idx',batch) for batch in files_train]
@@ -401,8 +377,7 @@ def get_filenames(dir, train_or_test = '', unknown_dir = None, idx = False):
             path_unknown, dirs_unknown, files_unknown = next(os.walk(os.path.join(dir, 'Unknown',unknown_dir)))
             file_count_unknown = len(files_unknown)
             filenames = [os.path.join(dir, 'Unknown',unknown_dir,f) for f in files_unknown]
-    print(" >>>>>>>>>>>>>>>>>>>   total files: ", len(filenames))
-    print(filenames)
+        
     return filenames
 
 class lymphomaBase( RNGDataFlow ):
@@ -414,7 +389,7 @@ class lymphomaBase( RNGDataFlow ):
                  , scale = 2, multi_crop=None, crop_per_case = None, normalize = 0
                  , shuffle=None, dir=None, lymphoma_num_classes=2,unknown_dir = None
                  , original_dir=None, write_crop=True, idx_filepath=None, mode=None
-                 , idx=False, resolution=None, memory_profile = None):
+                 , idx=False, resolution=None):
 
         assert train_or_test in ['train', 'test', 'val', '']
         assert lymphoma_num_classes == 2 or lymphoma_num_classes == 10
@@ -437,7 +412,7 @@ class lymphomaBase( RNGDataFlow ):
             shuffle = False
         
         if dir is None:
-            dir = './data' #and changes in behavor for more classes here
+            dir = '../data' #and changes in behavor for more classes here
         fnames = get_filenames(dir, train_or_test, unknown_dir=unknown_dir, idx=idx)
         
         self.fs = fnames
@@ -454,7 +429,7 @@ class lymphomaBase( RNGDataFlow ):
         self.scale_size = scale_size
         
         print(">> reading in files from: ", original_dir)
-        if idx is None:
+        if idx_filepath is None and (idx is None and mode is None):
             data = read_lymphoma(self.fs, train_or_test = self.train_or_test
                                  , image_size = self.image_size, scale_size = self.scale_size
                                  , scale = self.scale, multi_crop=self.multi_crop, crop_per_case = self.crop_per_case
@@ -465,7 +440,7 @@ class lymphomaBase( RNGDataFlow ):
                                  , image_size = self.image_size, scale_size = self.scale_size
                                  , scale = self.scale, multi_crop=self.multi_crop, crop_per_case = self.crop_per_case
                                  , normalize = self.normalize, original_dir=original_dir
-                                 ,write_crop=write_crop, idx_filepath=idx_filepath, mode=mode, resolution=resolution) #different classes changes here ect..
+                                 ,write_crop=write_crop, idx_filepath=idx_filepath, mode=mode) #different classes changes here ect..
         self.data = data[0]
         self.class_0 = data[1]
         self.class_1 = data[2]
@@ -478,14 +453,11 @@ class lymphomaBase( RNGDataFlow ):
         print("")
         self.dir = dir
         self.shuffle = shuffle
-        #self.memory_log = self.memory_profile
         
     def size(self):
         return len(self.data)
     
     # Required get_data for DataFlow
-    """memory_profile_log = open(memory_log, 'w+')
-    @profile(stream=memory_profile_log)"""
     def get_data(self):
         image_data = np.arange(len(self.data))
         if self.shuffle:
@@ -495,9 +467,7 @@ class lymphomaBase( RNGDataFlow ):
 
     def __len__(self):
         return len(self.data)
-
-    """memory_profile_log = open(memory_log, 'w+')
-    @profile(stream=memory_profile_log)"""
+    
     def __iter__(self):
         idxs = np.arange(len(self.data))
         if self.shuffle:
@@ -535,7 +505,7 @@ class lymphoma2(lymphomaBase):
     """
     def __init__(self, train_or_test, image_size = None, scale_size = None, scale = None
                  , multi_crop= None, crop_per_case = None, normalize = None, shuffle= None
-                 , dir=None, unknown_dir=None,original_dir=None, idx=None):
+                 , dir=None, unknown_dir=None,original_dir=None, idx=False):
 
         """
         Args:
@@ -565,8 +535,7 @@ class lymphoma2(lymphomaBase):
         super(lymphoma2, self).__init__(train_or_test, image_size = self.image_size, scale_size = self.scale_size
                                         , scale=self.scale, multi_crop=self.multi_crop, crop_per_case = self.crop_per_case
                                         , normalize = self.normalize, shuffle = self.shuffle, dir=dir, lymphoma_num_classes = 2
-                                        ,unknown_dir = unknown_dir, original_dir = original_dir
-                                        , idx=idx,idx_filepath=None, mode=None)
+                                        ,unknown_dir = unknown_dir, original_dir = original_dir, idx=False)
 
 # data converter for dataflow into IDX format
 # written to disk in Z space filling order
@@ -580,7 +549,7 @@ class lymphoma2ZIDX(lymphomaBase):
 
     def __init__(self, train_or_test, image_size=None, scale_size=None, scale=None, multi_crop=None, crop_per_case=None,
                  normalize=None, shuffle=None, dir=None, unknown_dir=None, original_dir=None
-                 ,idx_filepath=None, mode=None, idx=True, resolution=None, memory_profile=None):
+                 ,idx_filepath=None, mode=None, idx=True, resolution=None):
 
         """
         Args:
@@ -590,8 +559,6 @@ class lymphoma2ZIDX(lymphomaBase):
         if mode is None:
             print("no read or write mode provided. Assuming read ('r')")
             mode = 'r'
-        if memory_profile is not None:
-            memory_log = memory_profile
 
         if shuffle == None and train_or_test == 'train':
             shuffle = True
@@ -617,7 +584,7 @@ class lymphoma2ZIDX(lymphomaBase):
                                         , scale=self.scale, multi_crop=self.multi_crop, crop_per_case=self.crop_per_case
                                         , normalize=self.normalize, shuffle=self.shuffle, dir=dir,
                                         lymphoma_num_classes=2, unknown_dir=unknown_dir, original_dir=original_dir
-                                            ,idx_filepath=idx_filepath, mode=mode, idx=True, resolution=resolution, memory_profile = memory_profile)
+                                            ,idx_filepath=idx_filepath, mode=mode, idx=True, resolution=None)
 
 
 if __name__ == '__main__':
